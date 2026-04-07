@@ -2,26 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Brand Colors
-  static const Color primaryDark = Color(0xFF0D1B2A);
-  static const Color primaryMid = Color(0xFF1B2838);
-  static const Color surfaceDark = Color(0xFF162232);
-  static const Color surfaceCard = Color(0xFF1E2D3D);
-  static const Color surfaceCardLight = Color(0xFF243447);
-  static const Color accentCyan = Color(0xFF00E5FF);
-  static const Color accentTeal = Color(0xFF00BFA5);
-  static const Color accentBlue = Color(0xFF448AFF);
-  static const Color accentPurple = Color(0xFF7C4DFF);
-  static const Color accentOrange = Color(0xFFFF6E40);
-  static const Color accentPink = Color(0xFFFF4081);
-  static const Color accentGreen = Color(0xFF69F0AE);
-  static const Color accentYellow = Color(0xFFFFD740);
-  static const Color textPrimary = Color(0xFFE0E6ED);
-  static const Color textSecondary = Color(0xFF8899AA);
-  static const Color textMuted = Color(0xFF5A6A7A);
-  static const Color dangerRed = Color(0xFFFF5252);
-  static const Color successGreen = Color(0xFF69F0AE);
-  static const Color warningYellow = Color(0xFFFFD740);
+  static const Color primaryDark = Color(0xFF07111F);
+  static const Color primaryMid = Color(0xFF0F1E33);
+  static const Color surfaceDark = Color(0xFF111C2D);
+  static const Color surfaceCard = Color(0xFF162338);
+  static const Color surfaceCardLight = Color(0xFF1D2D45);
+  static const Color accentCyan = Color(0xFF4FB3FF);
+  static const Color accentTeal = Color(0xFF2DD4BF);
+  static const Color accentBlue = Color(0xFF60A5FA);
+  static const Color accentPurple = Color(0xFFA78BFA);
+  static const Color accentOrange = Color(0xFFF59E0B);
+  static const Color accentPink = Color(0xFFF472B6);
+  static const Color accentGreen = Color(0xFF34D399);
+  static const Color accentYellow = Color(0xFFFBBF24);
+  static const Color textPrimary = Color(0xFFF3F7FB);
+  static const Color textSecondary = Color(0xFFB5C2D1);
+  static const Color textMuted = Color(0xFF6C7D91);
+  static const Color dangerRed = Color(0xFFEF4444);
+  static const Color successGreen = Color(0xFF22C55E);
+  static const Color warningYellow = Color(0xFFF59E0B);
 
   static List<Color> sensorColors = [
     accentCyan,
@@ -96,11 +95,53 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: surfaceCard,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        shadowColor: Colors.black54,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 6),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: surfaceCardLight,
+        selectedColor: accentCyan.withValues(alpha: 0.20),
+        checkmarkColor: accentCyan,
+        labelStyle: const TextStyle(color: textPrimary),
+        side: BorderSide(color: textMuted.withValues(alpha: 0.22)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: accentCyan,
+          foregroundColor: primaryDark,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         ),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accentCyan,
+          side: BorderSide(color: accentCyan.withValues(alpha: 0.36)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return accentCyan;
+          }
+          return textMuted;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return accentCyan.withValues(alpha: 0.28);
+          }
+          return surfaceCardLight;
+        }),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -135,44 +176,48 @@ class AppTheme {
   }
 
   static BoxDecoration get glassCard => BoxDecoration(
-        color: surfaceCard.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: accentCyan.withValues(alpha: 0.1),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      );
+    color: surfaceCard.withValues(alpha: 0.92),
+    borderRadius: BorderRadius.circular(18),
+    border: Border.all(color: textMuted.withValues(alpha: 0.16), width: 1),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.24),
+        blurRadius: 24,
+        offset: const Offset(0, 10),
+      ),
+    ],
+  );
 
   static BoxDecoration glassCardWithColor(Color color) => BoxDecoration(
-        color: surfaceCard.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withValues(alpha: 0.15),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      );
+    color: surfaceCard.withValues(alpha: 0.94),
+    borderRadius: BorderRadius.circular(18),
+    border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.22),
+        blurRadius: 24,
+        offset: const Offset(0, 10),
+      ),
+    ],
+  );
 
   static LinearGradient get backgroundGradient => const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [primaryDark, Color(0xFF0A1628), Color(0xFF0D1B2A)],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [primaryDark, Color(0xFF0B1728), Color(0xFF101827)],
+  );
 
-  static LinearGradient accentGradient(Color color) => LinearGradient(
-        colors: [color, color.withValues(alpha: 0.6)],
-      );
+  static LinearGradient get glossOverlayGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Colors.white.withValues(alpha: 0.10),
+      Colors.transparent,
+      accentCyan.withValues(alpha: 0.05),
+    ],
+    stops: const [0, 0.38, 1],
+  );
+
+  static LinearGradient accentGradient(Color color) =>
+      LinearGradient(colors: [color, color.withValues(alpha: 0.6)]);
 }

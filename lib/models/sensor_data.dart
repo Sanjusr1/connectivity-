@@ -35,6 +35,8 @@ class SensorData {
     };
   }
 
+  Map<String, dynamic> toJson() => toMap();
+
   factory SensorData.fromMap(Map<String, dynamic> map) {
     return SensorData(
       timestamp: DateTime.parse(map['timestamp'] as String),
@@ -47,5 +49,9 @@ class SensorData {
       imuY: (map['imuY'] as num).toDouble(),
       imuZ: (map['imuZ'] as num).toDouble(),
     );
+  }
+
+  factory SensorData.fromJson(Map<String, dynamic> json) {
+    return SensorData.fromMap(json);
   }
 }
