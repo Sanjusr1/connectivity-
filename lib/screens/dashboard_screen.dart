@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/sensor_connection_config.dart';
 import '../models/sensor_data.dart';
 import '../providers/monitoring_provider.dart';
 import '../theme/app_theme.dart';
@@ -25,9 +26,11 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Mock readings update every second. The data model stores timestamp, environment, airflow, pressure, vibration RMS, and IMU vectors.',
+              'Connect your sensor hub over Wi-Fi or USB to ingest real readings and store each sample locally or in the cloud.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
+            const SizedBox(height: 16),
+            _ConnectionSettings(monitor: monitor),
             const SizedBox(height: 16),
             _Controls(monitor: monitor),
             const SizedBox(height: 16),
@@ -279,7 +282,7 @@ class _LiveValues extends StatelessWidget {
         if (monitor.isSensorActive('mems_microphone'))
           ValueTile(
             label: 'Microphone',
-            value: monitor.isMonitoring ? 'Streaming metadata' : '--',
+            value: _format(data?.microphoneLevel, 'dB'),
             icon: Icons.mic,
             color: AppTheme.accentGreen,
           ),
@@ -292,6 +295,107 @@ class _LiveValues extends StatelessWidget {
       return '--';
     }
     return '${value.toStringAsFixed(2)} $unit';
+  }
+}
+
+class _ConnectionSettings extends StatelessWidget {
+  const _ConnectionSettings({required this.monitor});
+
+  final MonitoringProvider monitor;
+
+  @override
+  Widget build(BuildContext context) {
+    final config = monitor.connectionConfig;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.glassCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sensor Connection',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Expected packet format: one JSON object per line over TCP or USB serial.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<SensorConnectionType>(
+            segments: const [
+              ButtonSegment(
+                value: SensorConnectionType.wifi,
+                icon: Icon(Icons.wifi),
+                label: Text('Wi-Fi'),
+              ),
+              ButtonSegment(
+                value: SensorConnectionType.usb,
+                icon: Icon(Icons.usb),
+                label: Text('USB'),
+              ),
+              ButtonSegment(
+                value: SensorConnectionType.mock,
+                icon: Icon(Icons.science_outlined),
+                label: Text('Mock'),
+              ),
+            ],
+            selected: {config.connectionType},
+            onSelectionChanged: (selection) {
+              monitor.setConnectionType(selection.first);
+            },
+          ),
+          if (config.connectionType == SensorConnectionType.wifi) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: config.wifiHost,
+              keyboardType: TextInputType.url,
+              onChanged: monitor.setWifiHost,
+              decoration: const InputDecoration(
+                labelText: 'Sensor hub host/IP',
+                hintText: '192.168.1.10',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: '${config.wifiPort}',
+              keyboardType: TextInputType.number,
+              onChanged: monitor.setWifiPort,
+              decoration: const InputDecoration(
+                labelText: 'TCP port',
+                hintText: '9000',
+              ),
+            ),
+          ] else if (config.connectionType == SensorConnectionType.usb) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Connect the sensor hub with USB OTG. Android will listen for newline-delimited JSON packets from the first readable USB device.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              'Mock mode stays available for UI testing when the real hub is offline.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _StatusRow(label: 'Connection mode', value: config.connectionLabel),
+          _StatusRow(label: 'Target', value: monitor.connectionSummary),
+          _StatusRow(label: 'State', value: monitor.connectionState),
+          if (monitor.lastError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              monitor.lastError!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -559,7 +663,7 @@ class _CollectedDataFeed extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'This view shows the latest raw mock reading plus the active streams that are currently being collected.',
+                'This view shows the latest raw sensor reading plus the active streams currently being collected.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 16),
@@ -592,6 +696,10 @@ class _CollectedDataFeed extends StatelessWidget {
                 _StatusRow(
                   label: 'Vibration RMS',
                   value: latest.vibrationRms.toStringAsFixed(4),
+                ),
+                _StatusRow(
+                  label: 'Microphone',
+                  value: '${latest.microphoneLevel.toStringAsFixed(2)} dB',
                 ),
                 _StatusRow(
                   label: 'IMU X, Y, Z',
@@ -689,7 +797,10 @@ class _CollectedReadingRow extends StatelessWidget {
                       '${reading.imuX.toStringAsFixed(2)}, ${reading.imuY.toStringAsFixed(2)}, ${reading.imuZ.toStringAsFixed(2)}',
                 ),
               if (monitor.isSensorActive('mems_microphone'))
-                const _MetricChip(label: 'Mic', value: 'metadata stream'),
+                _MetricChip(
+                  label: 'Mic',
+                  value: '${reading.microphoneLevel.toStringAsFixed(1)} dB',
+                ),
             ],
           ),
         ],

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'providers/monitoring_provider.dart';
 import 'screens/home_screen.dart';
-import 'services/mock_sensor_stream_service.dart';
+import 'services/live_sensor_stream_service.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 
@@ -25,7 +25,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MonitoringProvider(
-        streamService: MockSensorStreamService(),
+        streamService: LiveSensorStreamService(),
         storageService: storageService,
       ),
       child: MaterialApp(

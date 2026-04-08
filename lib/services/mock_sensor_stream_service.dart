@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:math';
 
+import '../models/sensor_connection_config.dart';
 import '../models/sensor_data.dart';
+import 'sensor_stream_service.dart';
 
-class MockSensorStreamService {
+class MockSensorStreamService implements SensorStreamService {
   final Random _random = Random();
 
+  @override
   Stream<SensorData> streamData({
+    required SensorConnectionConfig config,
     Duration interval = const Duration(seconds: 1),
   }) {
     return Stream.periodic(interval, (_) => _generateReading());
@@ -27,9 +31,15 @@ class MockSensorStreamService {
       vibrationRms: speechBurst
           ? 0.55 + _random.nextDouble() * 0.4
           : 0.08 + _random.nextDouble() * 0.35,
+      microphoneLevel: speechBurst
+          ? 65 + _random.nextDouble() * 18
+          : 35 + _random.nextDouble() * 15,
       imuX: -1 + _random.nextDouble() * 2,
       imuY: -1 + _random.nextDouble() * 2,
       imuZ: 0.65 + _random.nextDouble() * 0.7,
     );
   }
+
+  @override
+  Future<void> disconnect() async {}
 }

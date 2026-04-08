@@ -2,13 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/sensor_connection_config.dart';
 import '../models/sensor_data.dart';
-import '../services/mock_sensor_stream_service.dart';
+import '../services/sensor_stream_service.dart';
 import '../services/storage_service.dart';
 
 class MonitoringProvider extends ChangeNotifier {
   MonitoringProvider({
-    required MockSensorStreamService streamService,
+    required SensorStreamService streamService,
     required StorageService storageService,
   }) : _streamService = streamService,
        _storageService = storageService;
@@ -33,7 +34,7 @@ class MonitoringProvider extends ChangeNotifier {
     'temp_humidity': 'Temp & Humidity',
   };
 
-  final MockSensorStreamService _streamService;
+  final SensorStreamService _streamService;
   final StorageService _storageService;
 
   StreamSubscription<SensorData>? _subscription;
@@ -46,6 +47,12 @@ class MonitoringProvider extends ChangeNotifier {
   int _totalFrames = 0;
   bool _storeLocally = true;
   bool _storeInCloud = false;
+  SensorConnectionConfig _connectionConfig = const SensorConnectionConfig(
+    connectionType: SensorConnectionType.wifi,
+    wifiPort: 9000,
+  );
+  String? _lastError;
+  String _connectionState = 'Disconnected';
 
   SensorData? get latest => _history.isEmpty ? null : _history.last;
   List<SensorData> get history => List.unmodifiable(_history);
@@ -62,6 +69,23 @@ class MonitoringProvider extends ChangeNotifier {
   bool get storeLocally => _storeLocally;
   bool get storeInCloud => _storeInCloud;
   bool get speechDetected => (latest?.airflow ?? 0) >= speechAirflowThreshold;
+  SensorConnectionConfig get connectionConfig => _connectionConfig;
+  String? get lastError => _lastError;
+  String get connectionState => _connectionState;
+  String get connectionSummary {
+    switch (_connectionConfig.connectionType) {
+      case SensorConnectionType.mock:
+        return 'Mock generator';
+      case SensorConnectionType.wifi:
+        final host = _connectionConfig.wifiHost.trim();
+        if (host.isEmpty) {
+          return 'Wi-Fi sensor hub not configured';
+        }
+        return 'TCP ${_connectionConfig.wifiHost}:${_connectionConfig.wifiPort}';
+      case SensorConnectionType.usb:
+        return 'Android USB sensor hub';
+    }
+  }
 
   bool isSensorActive(String sensorId) => _activeSensorIds.contains(sensorId);
 
@@ -72,13 +96,24 @@ class MonitoringProvider extends ChangeNotifier {
       return;
     }
 
-    _subscription = _streamService.streamData().listen(_onReading);
+    _lastError = null;
+    _connectionState = 'Connecting...';
+    _subscription = _streamService
+        .streamData(config: _connectionConfig)
+        .listen(
+          _onReading,
+          onError: _onStreamError,
+          onDone: _onStreamDone,
+          cancelOnError: true,
+        );
     notifyListeners();
   }
 
   Future<void> stopMonitoring() async {
     await _subscription?.cancel();
     _subscription = null;
+    await _streamService.disconnect();
+    _connectionState = 'Disconnected';
     notifyListeners();
   }
 
@@ -111,7 +146,33 @@ class MonitoringProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setConnectionType(SensorConnectionType value) {
+    _connectionConfig = _connectionConfig.copyWith(connectionType: value);
+    _lastError = null;
+    if (!isMonitoring) {
+      _connectionState = 'Disconnected';
+    }
+    notifyListeners();
+  }
+
+  void setWifiHost(String value) {
+    _connectionConfig = _connectionConfig.copyWith(wifiHost: value.trim());
+    _lastError = null;
+    notifyListeners();
+  }
+
+  void setWifiPort(String value) {
+    final parsed = int.tryParse(value);
+    if (parsed == null || parsed <= 0) {
+      return;
+    }
+    _connectionConfig = _connectionConfig.copyWith(wifiPort: parsed);
+    _lastError = null;
+    notifyListeners();
+  }
+
   Future<void> _onReading(SensorData data) async {
+    _connectionState = 'Streaming';
     _history.add(data);
     if (_history.length > maxChartPoints) {
       _history.removeAt(0);
@@ -134,9 +195,25 @@ class MonitoringProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _onStreamError(Object error, StackTrace stackTrace) {
+    _subscription = null;
+    _connectionState = 'Error';
+    _lastError = error.toString();
+    notifyListeners();
+  }
+
+  void _onStreamDone() {
+    _subscription = null;
+    if (_connectionState != 'Error') {
+      _connectionState = 'Disconnected';
+    }
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
+    _streamService.disconnect();
     super.dispose();
   }
 }
