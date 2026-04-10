@@ -139,16 +139,22 @@ The supported sensors are:
 
 The current data flow is:
 
-1. The sensor hub sends packets over Wi-Fi TCP or USB.
-2. The app receives newline-delimited JSON packets.
-3. The transport service parses those packets into `SensorData`.
-4. `MonitoringProvider` updates:
+1. Physical sensors send their signals to the microcontroller or sensor hub.
+2. Firmware, such as STM32 firmware written in STM32CubeIDE, reads the sensor values from ADC, I2C, SPI, UART, or any other sensor interface used by the hardware.
+3. The firmware sends packets out over Wi-Fi TCP or USB.
+4. The app receives newline-framed packets. One packet must end with `\n` so the app can tell where one reading ends and the next one begins.
+5. The transport service preserves each full packet as raw transport data.
+6. If the packet is a JSON object, the app also parses chart-friendly fields into `SensorData`.
+7. If the packet is plain text, CSV, or binary bytes, the app still stores it losslessly as raw data for later decoding or backend processing.
+8. `MonitoringProvider` updates:
    - latest reading
-   - historical chart data
+   - historical chart data when numeric fields are available
    - session counters
    - active stream statistics
-5. The reading is saved locally in Hive.
-6. The same reading can later be sent to cloud storage when backend integration is added.
+9. The reading and raw transport payload are saved locally in Hive.
+10. The same saved data can later be sent to cloud storage when backend integration is added.
+
+The important design rule is that the app now captures raw data first and only parses it when it knows how. This avoids losing sensor details just because the firmware sends a format other than JSON.
 
 ## 7. Real Sensor Connectivity
 
@@ -158,24 +164,36 @@ The app now supports three modes:
 
 - connects to a sensor hub through TCP
 - user enters host/IP and port
-- sensor packets are read line by line
+- sensor packets are read as bytes and split by newline framing
+- supports JSON, text, CSV, or binary packet contents
 
 ### USB Mode
 
 - available on Android
 - uses USB host mode
-- listens to a connected USB device and reads incoming packets
+- listens to a connected USB device and reads incoming byte packets
+- uses Android's built-in USB host APIs, not STM32CubeIDE, ST-LINK, or vendor-specific desktop drivers
+- forwards packet bytes to Flutter instead of forcing the USB stream to UTF-8 text too early
+- supports JSON, text, CSV, or binary packet contents after newline framing
 
 ### Mock Mode
 
 - used for UI testing and demo mode
 - helpful when hardware is not connected
 
-## 8. Packet Format Expected by the App
+## 8. Packet Format Supported by the App
 
-The app expects one JSON object per line.
+The app expects one packet per line. The packet can contain JSON, plain text, CSV, or binary bytes.
 
-Example:
+The only fixed requirement is framing:
+
+- each packet must end with newline `\n`
+- newline separates packets over both Wi-Fi and USB
+- the packet content before the newline can be text or bytes
+
+JSON objects are parsed into chart-friendly fields. Non-JSON packets are not rejected; they are stored as raw transport payloads.
+
+### JSON Packets
 
 ```json
 {"timestamp":"2026-04-08T10:15:00Z","temperature":27.1,"humidity":51.2,"airflow":3.9,"pressure":112.0,"vibrationRms":0.63,"microphoneLevel":68.4,"imuX":0.12,"imuY":-0.07,"imuZ":0.98}
@@ -193,7 +211,43 @@ Accepted alternate keys include:
 - `accel_y`, `ay`
 - `accel_z`, `az`
 
-This means the sensor hub firmware should serialize readings in a compatible JSON structure before sending them to the app.
+When packets use these fields, the dashboard can show live values and charts.
+
+### Plain Text or CSV Packets
+
+The firmware can also send plain text or CSV. For example:
+
+```text
+27.1,51.2,3.9,112.0,0.63,68.4,0.12,-0.07,0.98
+```
+
+The app stores this as raw text. It does not currently infer CSV column meanings automatically, so chart fields will remain zero unless a parser is added later.
+
+### Binary Packets
+
+The firmware can send binary bytes as long as packets are newline-framed. If the packet is not valid UTF-8 text, the app stores the bytes as Base64 in `rawBytesBase64`.
+
+This allows the app to preserve raw microphone samples, ADC buffers, compact binary frames, or other custom firmware payloads without throwing the packet away. A backend or future decoder can later convert the Base64 data back into the original bytes.
+
+### STM32CubeIDE Relationship
+
+STM32CubeIDE is used to write and flash the STM32 firmware. The app does not connect directly to CubeIDE or ST-LINK debug sessions.
+
+The supported flow is:
+
+```text
+Sensors -> STM32 firmware built in CubeIDE -> Wi-Fi TCP or USB -> Flutter app -> local storage -> future backend
+```
+
+This means CubeIDE-associated sensors can work with the app when the STM32 firmware streams packets over Wi-Fi or USB. The firmware decides the packet format. The app can preserve JSON, text, CSV, or binary payloads, but the firmware still needs to send clear packet boundaries using newline framing.
+
+### Current Limits
+
+- live charts only update automatically from known JSON fields
+- text, CSV, and binary packets are preserved losslessly but not fully interpreted into chart fields yet
+- USB support uses the first readable bulk or interrupt IN endpoint found on Android
+- USB CDC serial devices may need more specific CDC ACM handling for production reliability
+- ST-LINK, CubeIDE debug connections, and desktop driver connections are not supported by this mobile app
 
 ## 9. Current Functionalities in the App
 
@@ -210,6 +264,7 @@ The app currently supports these user-facing capabilities:
 - local storage toggle
 - cloud storage toggle placeholder
 - locally persisted samples through Hive
+- raw transport payload preservation for lossless JSON, text, CSV, and binary packet storage
 
 ## 10. What the Backend Should Do
 
@@ -236,9 +291,12 @@ The backend should support:
 
 ### Cloud Data Ingestion
 
-- receive sensor data from the app
+- receive sensor data from the app, including the preserved raw transport payload when lossless storage is required
 - support both single-reading and batch upload
-- validate packet schema
+- validate packet schema without discarding raw fields needed for later reprocessing
+- store `rawFormat`, `rawPacket`, `rawBytesBase64`, and parsed sensor fields when present
+- decode or post-process text, CSV, and binary packets when the backend knows the device-specific format
+- keep original raw payloads even after successful decoding so reprocessing is possible later
 
 ### Data Storage
 
@@ -305,9 +363,12 @@ The following has already been implemented:
 - per-sensor collection toggles
 - live values and chart-based monitoring
 - local persistence using Hive
-- unified sensor data model
+- unified sensor data model with parsed fields and preserved raw transport payloads
 - real Wi-Fi ingestion using TCP sockets
 - real USB ingestion on Android using native USB host integration
+- raw byte packet handling before JSON/text/binary detection
+- lossless storage support for JSON, text, CSV, and binary packet contents
+- dashboard display for raw format, raw transport payload, original packet text, and Base64 binary bytes
 - connection configuration in the UI
 - basic error state handling for connection issues
 - git integration and commit for the recent real-sensor update
@@ -332,9 +393,12 @@ The following work is still pending:
 ### Hardware Integration Improvements
 
 - align the app packet parser with the exact firmware payload format
+- add optional CSV-to-field mapping if CSV packets need live charts
+- add optional binary decoders for device-specific raw microphone, ADC, or IMU frames
 - support richer microphone payloads if required
 - handle more detailed IMU data if gyroscope values are needed separately
 - improve USB device selection when multiple USB devices are connected
+- add stronger USB CDC ACM support if the STM32 presents itself as a virtual COM port
 
 ### Reliability
 
@@ -357,7 +421,7 @@ The following work is still pending:
 
 ## 15. Final Summary
 
-This project has moved beyond a mock-only Flutter prototype and is now capable of receiving real sensor data over Wi-Fi and USB, displaying it live, and storing it locally.
+This project has moved beyond a mock-only Flutter prototype and is now capable of receiving real sensor data over Wi-Fi and USB, displaying it live when fields can be parsed, and storing the original raw packet locally.
 
 What is complete:
 
@@ -368,6 +432,9 @@ What is complete:
 - Android USB ingestion
 - local storage
 - unified transport parsing
+- raw packet preservation for JSON, text, CSV, and binary payloads
+- JSON field parsing for dashboard charts and live values
+- raw binary packet storage as Base64
 
 What is not complete yet:
 
@@ -376,5 +443,7 @@ What is not complete yet:
 - full session management
 - export and analytics workflows
 - exact firmware-to-app protocol finalization
+- automatic live chart parsing for CSV or custom binary packet formats
+- production-grade USB serial/CDC handling if the target STM32 board requires it
 
-In short, the app is now a working real-sensor collection frontend, but the backend and production data pipeline still need to be built to make the system complete end to end.
+In short, the app is now a working real-sensor collection frontend that can preserve raw packets from STM32/CubeIDE firmware over Wi-Fi or USB. The backend and production data pipeline still need to be built to make the system complete end to end.

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -319,7 +321,7 @@ class _ConnectionSettings extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Expected packet format: one JSON object per line over TCP or USB serial.',
+            'Expected framing: one packet per line over TCP or USB. JSON, text, CSV, and binary packets are preserved as raw data.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -706,6 +708,43 @@ class _CollectedDataFeed extends StatelessWidget {
                   value:
                       '${latest.imuX.toStringAsFixed(2)}, ${latest.imuY.toStringAsFixed(2)}, ${latest.imuZ.toStringAsFixed(2)}',
                 ),
+                _StatusRow(label: 'Raw format', value: latest.rawFormat),
+                const SizedBox(height: 16),
+                Text(
+                  'Raw transport payload',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                SelectableText(
+                  const JsonEncoder.withIndent(
+                    '  ',
+                  ).convert(latest.rawTransportMap),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (latest.rawPacket != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Original packet line',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    latest.rawPacket!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+                if (latest.rawBytesBase64 != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Raw bytes base64',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    latest.rawBytesBase64!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Text(
                   'Active sensor streams',
@@ -765,6 +804,7 @@ class _CollectedReadingRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              _MetricChip(label: 'Raw', value: reading.rawFormat),
               if (monitor.isSensorActive('temp_humidity')) ...[
                 _MetricChip(
                   label: 'Temp',

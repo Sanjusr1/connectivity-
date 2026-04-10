@@ -65,14 +65,12 @@ class LiveSensorStreamService implements SensorStreamService {
     await disconnect();
 
     try {
-      final socket = await Socket.connect(config.wifiHost.trim(), config.wifiPort);
+      final socket = await Socket.connect(
+        config.wifiHost.trim(),
+        config.wifiPort,
+      );
       _wifiSocket = socket;
-      yield* socket
-          .cast<List<int>>()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .where((line) => line.trim().isNotEmpty)
-          .map(_decodePacketLine);
+      yield* _splitPackets(socket.cast<List<int>>()).map(_decodePacketBytes);
     } on SocketException catch (error) {
       throw SensorConnectionException(
         'Wi-Fi connection failed: ${error.message}.',
@@ -97,16 +95,13 @@ class LiveSensorStreamService implements SensorStreamService {
         try {
           _usbEventSubscription = _usbEventChannel
               .receiveBroadcastStream()
-              .listen(
-                (dynamic event) {
-                  try {
-                    controller.add(_decodePacket(event));
-                  } catch (error) {
-                    controller.addError(error);
-                  }
-                },
-                onError: controller.addError,
-              );
+              .listen((dynamic event) {
+                try {
+                  controller.add(_decodePacket(event));
+                } catch (error) {
+                  controller.addError(error);
+                }
+              }, onError: controller.addError);
 
           await _usbControlChannel.invokeMethod<String>('startUsbStream');
         } on PlatformException catch (error) {
@@ -137,22 +132,82 @@ class LiveSensorStreamService implements SensorStreamService {
     if (rawPacket is String) {
       return _decodePacketLine(rawPacket);
     }
+    if (rawPacket is Uint8List) {
+      return _decodePacketBytes(rawPacket);
+    }
+    if (rawPacket is List<int>) {
+      return _decodePacketBytes(rawPacket);
+    }
     throw const SensorConnectionException(
       'Unsupported packet format from sensor stream.',
     );
   }
 
   SensorData _decodePacketLine(String line) {
+    final trimmedLine = line.trimRight();
     try {
-      final decoded = jsonDecode(line);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('Expected a JSON object.');
+      final decoded = jsonDecode(trimmedLine);
+      if (decoded is Map<String, dynamic>) {
+        return SensorData.fromTransportMap(decoded, rawPacket: line);
       }
-      return SensorData.fromTransportMap(decoded);
-    } on FormatException catch (error) {
-      throw SensorConnectionException(
-        'Invalid sensor packet: ${error.message}',
+      return SensorData.fromRawPacket(
+        rawTransportMap: {'raw_format': 'json_non_object', 'raw_json': decoded},
+        rawFormat: 'json_non_object',
+        rawPacket: line,
       );
+    } on FormatException {
+      return SensorData.fromRawPacket(
+        rawTransportMap: {'raw_format': 'text', 'raw_text': line},
+        rawFormat: 'text',
+        rawPacket: line,
+      );
+    }
+  }
+
+  SensorData _decodePacketBytes(List<int> packetBytes) {
+    String? rawText;
+    try {
+      rawText = utf8.decode(packetBytes, allowMalformed: false);
+    } on FormatException {
+      return _buildRawBinaryPacket(packetBytes);
+    }
+
+    final line = rawText.endsWith('\r')
+        ? rawText.substring(0, rawText.length - 1)
+        : rawText;
+    return _decodePacketLine(line);
+  }
+
+  SensorData _buildRawBinaryPacket(List<int> packetBytes) {
+    final encodedPacket = base64Encode(packetBytes);
+    return SensorData.fromRawPacket(
+      rawTransportMap: {
+        'raw_format': 'binary',
+        'raw_bytes_base64': encodedPacket,
+        'raw_byte_count': packetBytes.length,
+      },
+      rawFormat: 'binary',
+      rawBytesBase64: encodedPacket,
+    );
+  }
+
+  Stream<List<int>> _splitPackets(Stream<List<int>> byteStream) async* {
+    final buffer = <int>[];
+    await for (final chunk in byteStream) {
+      for (final byte in chunk) {
+        if (byte == 10) {
+          if (buffer.isNotEmpty) {
+            yield List<int>.from(buffer);
+            buffer.clear();
+          }
+        } else {
+          buffer.add(byte);
+        }
+      }
+    }
+
+    if (buffer.isNotEmpty) {
+      yield List<int>.from(buffer);
     }
   }
 

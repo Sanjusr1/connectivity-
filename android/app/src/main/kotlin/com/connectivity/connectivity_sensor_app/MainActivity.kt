@@ -20,6 +20,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
     private val usbControlChannelName = "connectivity_sensor_app/usb_control"
@@ -151,7 +152,7 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler, EventCh
     private fun startReadLoop(connection: UsbDeviceConnection, endpoint: UsbEndpoint) {
         readThread = Thread {
             val buffer = ByteArray(4096)
-            val packetBuffer = StringBuilder()
+            val packetBuffer = ByteArrayOutputStream()
 
             try {
                 while (!Thread.currentThread().isInterrupted) {
@@ -160,7 +161,7 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler, EventCh
                         continue
                     }
 
-                    packetBuffer.append(String(buffer, 0, byteCount, Charsets.UTF_8))
+                    packetBuffer.write(buffer, 0, byteCount)
                     emitCompletedPackets(packetBuffer)
                 }
             } catch (error: Exception) {
@@ -172,15 +173,25 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler, EventCh
         }
     }
 
-    private fun emitCompletedPackets(packetBuffer: StringBuilder) {
-        var newlineIndex = packetBuffer.indexOf("\n")
-        while (newlineIndex >= 0) {
-            val packet = packetBuffer.substring(0, newlineIndex).trim()
-            packetBuffer.delete(0, newlineIndex + 1)
-            if (packet.isNotEmpty()) {
-                mainHandler.post { eventSink?.success(packet) }
+    private fun emitCompletedPackets(packetBuffer: ByteArrayOutputStream) {
+        val bytes = packetBuffer.toByteArray()
+        var packetStart = 0
+
+        for (index in bytes.indices) {
+            if (bytes[index].toInt() == 10) {
+                val packet = bytes.copyOfRange(packetStart, index)
+                if (packet.isNotEmpty()) {
+                    mainHandler.post { eventSink?.success(packet) }
+                }
+                packetStart = index + 1
             }
-            newlineIndex = packetBuffer.indexOf("\n")
+        }
+
+        if (packetStart > 0) {
+            packetBuffer.reset()
+            if (packetStart < bytes.size) {
+                packetBuffer.write(bytes, packetStart, bytes.size - packetStart)
+            }
         }
     }
 
